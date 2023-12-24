@@ -9,8 +9,9 @@ import (
 )
 
 type Location struct {
-	x int
-	y int
+	x      int
+	y      int
+	symbol rune
 }
 
 type PartNumber struct {
@@ -22,10 +23,21 @@ type PartNumber struct {
 
 func markNumbers(pns []PartNumber, x int) {
 	for i, num := range pns {
-		if !((x+1 < num.start) || (num.end < x-1)) {
+		if !((x+1 < num.start) || (num.end <= x-1)) {
 			pns[i].confirmed = true
 		}
 	}
+}
+
+func matchNumbers(pns []PartNumber, x int) []PartNumber {
+	matched := make([]PartNumber, 0)
+	for i, num := range pns {
+		if !((x+1 < num.start) || (num.end <= x-1)) {
+			matched = append(matched, pns[i])
+		}
+	}
+
+	return matched
 }
 
 func readInput(inputFilePath string) ([][]PartNumber, []Location, int) {
@@ -70,7 +82,7 @@ func readInput(inputFilePath string) ([][]PartNumber, []Location, int) {
 				}
 				if ch != '.' {
 					// Save symbol locations
-					locations = append(locations, Location{x: x, y: y})
+					locations = append(locations, Location{x: x, y: y, symbol: ch})
 				}
 
 				wasDigit = false
@@ -110,7 +122,7 @@ func prettyPrint(pnums [][]PartNumber, locs []Location, lineLength int) {
 				}
 				currNum++
 			} else {
-				fmt.Print(" ")
+				fmt.Print(".")
 				x++
 			}
 		}
@@ -119,14 +131,13 @@ func prettyPrint(pnums [][]PartNumber, locs []Location, lineLength int) {
 }
 
 func part1(inputFilePath string) {
-	partNumbers, locations, lineLength := readInput(inputFilePath)
+	partNumbers, locations, _ := readInput(inputFilePath)
 
 	for _, location := range locations {
 		markNumbers(partNumbers[location.y-1], location.x)
 		markNumbers(partNumbers[location.y], location.x)
 		markNumbers(partNumbers[location.y+1], location.x)
 	}
-	prettyPrint(partNumbers, locations, lineLength)
 
 	total := 0
 	for _, row := range partNumbers {
@@ -139,7 +150,25 @@ func part1(inputFilePath string) {
 	println(total)
 }
 
-func part2(lines []string) {
+func part2(path string) {
+	partNumbers, locations, _ := readInput(path)
+
+	total := 0
+	for _, location := range locations {
+		if location.symbol != '*' {
+			continue
+		}
+
+		matched := make([]PartNumber, 0)
+		matched = append(matched, matchNumbers(partNumbers[location.y-1], location.x)...)
+		matched = append(matched, matchNumbers(partNumbers[location.y], location.x)...)
+		matched = append(matched, matchNumbers(partNumbers[location.y+1], location.x)...)
+
+		if len(matched) == 2 {
+			total += matched[0].number * matched[1].number
+		}
+	}
+	fmt.Println(total)
 }
 
 func main() {
@@ -153,7 +182,7 @@ func main() {
 		if part == "1" {
 			part1(inputFilePath)
 		} else {
-			// part2(input)
+			part2(inputFilePath)
 		}
 	}
 }
