@@ -15,73 +15,26 @@ func sum(ints []int) int {
 	return total
 }
 
-// Generate the possible nonogram row options
-// nums: group sizes left to place
-// length: the number of spaces to place the remaining groups in
-// prefix: the prefix to be added to the options
-// c: the channel to send the results over
-func generateOptions(nums []int, length int, prefix string, c chan string) {
-	// Base case
-	if len(nums) == 0 {
-		c <- prefix + strings.Repeat(".", length)
-		return
+type Template string
+
+// Returns true if the provided prefix matches the template
+func (t Template) matchPrefix(prefix string) bool {
+	if len(prefix) > len(t) {
+		return false
 	}
 
-	groupSize := nums[0]
-	leftover := len(nums[1:]) + sum(nums[1:])
-	// fmt.Println(length, groupSize, leftover)
-	for start := 0; start <= length-leftover-groupSize; start++ {
-		if prefix != "" && start == 0 {
-			continue
+	for i := 0; i < len(prefix); i++ {
+		if (t)[i] != '?' && (t)[i] != (prefix)[i] {
+			return false
 		}
-		newPrefix := strings.Repeat(".", start) + strings.Repeat("#", groupSize)
-		// If there are more groups to place, we need to make sure we
-		// Add a spacer on the last section
-		// if start == length-leftover-groupSize && len(nums) > 1 {
-		// 	newPrefix += "."
-		// }
-		generateOptions(nums[1:], length-len(newPrefix), prefix+newPrefix, c)
 	}
 
-	if prefix == "" {
-		close(c)
-	}
+	return true
 }
 
 type Record struct {
-	pattern string
-	groups  []int
-}
-
-func countMatches(record Record) int {
-	optChan := make(chan string)
-	go generateOptions(record.groups, len(record.pattern), "", optChan)
-
-	matches := 0
-	nopts := 0
-	for {
-		option, ok := <-optChan
-		if !ok {
-			break
-		}
-
-		nopts += 1
-		if nopts%1000 == 0 {
-			fmt.Println(nopts, option)
-		}
-
-		match := true
-		for i := 0; i < len(record.pattern); i++ {
-			if record.pattern[i] != '?' && record.pattern[i] != option[i] {
-				match = false
-			}
-		}
-
-		if match {
-			matches += 1
-		}
-	}
-	return matches
+	template Template
+	groups   []int
 }
 
 func readInput(path string) []Record {
@@ -98,12 +51,68 @@ func readInput(path string) []Record {
 		}
 
 		records = append(records, Record{
-			pattern: parts[0],
-			groups:  nums,
+			template: Template(parts[0]),
+			groups:   nums,
 		})
 	}
 
 	return records
+}
+
+type Entry struct {
+	group_index    int
+	template_index int
+}
+
+func countMatches(r Record) int {
+	// DP Memoization table
+	mem := make(map[Entry]int)
+	return counter(mem, r, 0, 0)
+}
+
+func counter(mem map[Entry]int, r Record, group_index int, template_index int) int {
+	// Return memoized value if present
+	key := Entry{group_index, template_index}
+	if val, ok := mem[key]; ok {
+		return val
+	}
+
+	// There are no more groups to place
+	if group_index >= len(r.groups) {
+		prefix := strings.Repeat(".", len(r.template)-template_index)
+
+		if r.template[template_index:].matchPrefix(prefix) {
+			mem[key] = 1
+		} else {
+			mem[key] = 0
+		}
+	} else {
+		total := 0
+
+		// Need to count the number of ways to place the rest of the items
+		// |---------------------length----------------------|
+		// |----------room to play-------|-----leftover------|
+		//    |--size--| <- the group that needs to be placed
+		//    ^ start
+		length := len(r.template) - template_index
+		size := r.groups[group_index]
+		leftover := len(r.groups[group_index+1:]) + sum(r.groups[group_index+1:])
+		for start := 0; start <= length-leftover-size; start++ {
+			// Every group after the first needs to lead with a "."
+			if group_index != 0 && start == 0 {
+				continue
+			}
+
+			prefix := strings.Repeat(".", start) + strings.Repeat("#", size)
+			if r.template[template_index:].matchPrefix(prefix) {
+				total += counter(mem, r, group_index+1, template_index+len(prefix))
+			}
+		}
+
+		mem[key] = total
+	}
+
+	return mem[key]
 }
 
 func part1(path string) {
@@ -123,18 +132,21 @@ func part2(path string) {
 
 	total := 0
 	for _, record := range records {
-		fmt.Println("solving")
-		record.pattern = strings.Repeat(record.pattern, scale)
 
 		repeated := make([]int, 0, len(record.groups)*scale)
+		repPat := Template("")
 		for i := 0; i < scale; i++ {
+			if i != 0 {
+				repPat += "?"
+			}
+			repPat += record.template
 			repeated = append(repeated, record.groups...)
 		}
 		record.groups = repeated
-
-		fmt.Println(record)
+		record.template = repPat
 
 		total += countMatches(record)
+
 	}
 
 	fmt.Println(total)
